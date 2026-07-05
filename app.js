@@ -106,7 +106,7 @@ function logDeviceCollections(device) {
     lines.push(`collection usagePage=0x${collection.usagePage.toString(16)} usage=0x${collection.usage?.toString(16) ?? "?"} out=[${outIds}] feat=[${featIds}]`);
   }
   if (lines.length) {
-    logLine("Collections HID:");
+    logLine("HID collections:");
     for (const l of lines) logLine(`  ${l}`);
   }
 }
@@ -141,11 +141,11 @@ async function loadGainCurves() {
     gainCurveRb = rbText.trim().split(/\s+/).slice(0, 128).map((n) => clampInt(Number(n) || 0, -128, 127));
     if (gainCurveTr.length < 128) gainCurveTr = gainCurveTr.concat(new Array(128 - gainCurveTr.length).fill(0));
     if (gainCurveRb.length < 128) gainCurveRb = gainCurveRb.concat(new Array(128 - gainCurveRb.length).fill(0));
-    logLine("Gain curves chargees.");
+    logLine("Gain curves loaded.");
   } catch (err) {
     gainCurveTr.fill(0);
     gainCurveRb.fill(0);
-    logLine(`Gain curves indisponibles (${String(err)}), fallback a 0.`);
+    logLine(`Gain curves unavailable (${String(err)}), fallback to 0.`);
   }
 }
 
@@ -236,21 +236,21 @@ async function schedulerTick() {
       return;
     }
     await doStop();
-    logLine("Playback termine.");
+    logLine("Playback finished.");
   }
 }
 
 async function doPlay() {
   if (!hidDevice || !hidDevice.opened) {
-    logLine("Connecte un device d'abord.");
+    logLine("Connect a device first.");
     return;
   }
   if (!outputReportIds.length || (outputReportIds.length === 1 && outputReportIds[0] === 0)) {
-    logLine("Interface HID non ecrivable detectee. Reconnecte en selectionnant le Steam Controller (interface haptique). ");
+    logLine("Non-writable HID interface detected. Reconnect and select the Steam Controller haptics interface.");
     return;
   }
   if (!midiEvents.length) {
-    logLine("Charge un MIDI d'abord.");
+    logLine("Load a MIDI file first.");
     return;
   }
   await loadGainCurves();
@@ -287,7 +287,7 @@ async function doStop() {
 
 async function connectDevice() {
   if (!navigator.hid) {
-    logLine("WebHID non supporte dans ce contexte.");
+    logLine("WebHID is not supported in this context.");
     return;
   }
 
@@ -306,7 +306,7 @@ async function connectDevice() {
   );
 
   if (!devices.length) {
-    logLine("Aucun device selectionne.");
+    logLine("No device selected.");
     return;
   }
 
@@ -335,17 +335,17 @@ async function connectDevice() {
   outputReportIds = collectOutputReportIds(hidDevice);
   const featureReportIds = collectFeatureReportIds(hidDevice);
   logDeviceCollections(hidDevice);
-  logLine(`Report IDs sortie detectes: ${outputReportIds.join(", ")}`);
-  logLine(`Report IDs feature detectes: ${featureReportIds.join(", ") || "none"}`);
+  logLine(`Detected output report IDs: ${outputReportIds.join(", ")}`);
+  logLine(`Detected feature report IDs: ${featureReportIds.join(", ") || "none"}`);
 
   if (!outputReportIds.length || (outputReportIds.length === 1 && outputReportIds[0] === 0)) {
-    logLine("Attention: cette interface n'expose pas de vrais output reports. Essaie de re-cliquer Connecter et selectionner le Steam Controller (pas le Puck). ");
+    logLine("Warning: this interface does not expose writable output reports. Click Connect again and pick Steam Controller (not Puck).");
   }
 
-  el.deviceInfo.textContent = `Connecte: ${hidDevice.productName || "Steam device"}`;
+  el.deviceInfo.textContent = `Connected: ${hidDevice.productName || "Steam device"}`;
   el.disconnectBtn.disabled = false;
   el.playBtn.disabled = midiEvents.length === 0;
-  logLine(`Device connecte: ${hidDevice.productName || "Inconnu"}`);
+  logLine(`Device connected: ${hidDevice.productName || "Unknown"}`);
 }
 
 async function disconnectDevice() {
@@ -354,10 +354,10 @@ async function disconnectDevice() {
     await hidDevice.close();
   }
   hidDevice = null;
-  el.deviceInfo.textContent = "Aucun device connecte.";
+  el.deviceInfo.textContent = "No device connected.";
   el.disconnectBtn.disabled = true;
   el.playBtn.disabled = true;
-  logLine("Device deconnecte.");
+  logLine("Device disconnected.");
 }
 
 async function handleMidiFile(file) {
@@ -366,32 +366,32 @@ async function handleMidiFile(file) {
   midiEvents = buildEventList(midi);
   midiDurationSec = Math.max(0, midi.duration || 0);
 
-  el.midiInfo.textContent = `${file.name} | tracks: ${midi.tracks.length} | events: ${midiEvents.length} | duree: ${midiDurationSec.toFixed(2)}s`;
+  el.midiInfo.textContent = `${file.name} | tracks: ${midi.tracks.length} | events: ${midiEvents.length} | duration: ${midiDurationSec.toFixed(2)}s`;
 
   if (file.name.includes("_dv")) {
     el.directVelocity.checked = true;
   }
 
   el.playBtn.disabled = !hidDevice || !hidDevice.opened;
-  logLine(`MIDI charge: ${file.name}`);
+  logLine(`MIDI loaded: ${file.name}`);
 }
 
 el.connectBtn.addEventListener("click", () => {
-  connectDevice().catch((err) => logLine(`Erreur connect: ${String(err)}`));
+  connectDevice().catch((err) => logLine(`Connect error: ${String(err)}`));
 });
 el.disconnectBtn.addEventListener("click", () => {
-  disconnectDevice().catch((err) => logLine(`Erreur disconnect: ${String(err)}`));
+  disconnectDevice().catch((err) => logLine(`Disconnect error: ${String(err)}`));
 });
 el.playBtn.addEventListener("click", () => {
-  doPlay().catch((err) => logLine(`Erreur play: ${String(err)}`));
+  doPlay().catch((err) => logLine(`Play error: ${String(err)}`));
 });
 el.stopBtn.addEventListener("click", () => {
-  doStop().catch((err) => logLine(`Erreur stop: ${String(err)}`));
+  doStop().catch((err) => logLine(`Stop error: ${String(err)}`));
 });
 el.midiFile.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
-  handleMidiFile(file).catch((err) => logLine(`Erreur MIDI: ${String(err)}`));
+  handleMidiFile(file).catch((err) => logLine(`MIDI error: ${String(err)}`));
 });
 
 window.addEventListener("beforeunload", () => {
@@ -400,4 +400,4 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
-logLine("Pret. Lance un serveur local HTTP/HTTPS pour utiliser WebHID (localhost recommandé).");
+logLine("Ready. Start a local HTTP/HTTPS server to use WebHID (localhost recommended). v3ry3D product build.");
