@@ -5,12 +5,19 @@ const STEAM_CONTROLLER_2026 = 0x1302;
 const STEAM_PUCK = 0x1304;
 const NOTE_STOP = -1;
 const TRITON_REPORT_ID = 0x83;
+const APP_VERSION = "v0.3.0";
 
 const midiFrequencyTr = [0, 9, 9, 10, 10, 11, 12, 12, 13, 14, 15, 15, 16, 17, 18, 19, 21, 22, 23, 24, 26, 28, 29, 31, 33, 35, 37, 39, 41, 44, 46, 49, 52, 55, 58, 62, 65, 69, 73, 78, 82, 87, 92, 98, 104, 110, 117, 123, 131, 139, 147, 156, 165, 175, 185, 196, 208, 220, 233, 247, 261, 276, 293, 310, 328, 349, 369, 391, 414, 439, 466, 493, 522, 552, 584, 621, 658, 696, 738, 781, 828, 877, 929, 985, 1043, 1105, 1171, 1240, 1314, 1392, 1475, 1562, 1655, 1754, 1858, 1969, 2085, 2209, 2340, 2480, 2627, 2784, 2949, 3124, 3311, 3507, 3716, 3938, 4173, 4422, 4686, 4965, 5261, 5575, 5907, 6259, 6632, 7027, 7446, 7889, 8359, 8857, 9384, 9943, 10535, 11162, 11827, 12531];
 const midiFrequencyRb = [0, 10, 10, 11, 11, 12, 13, 13, 14, 15, 16, 16, 17, 18, 19, 20, 22, 23, 24, 25, 27, 29, 30, 32, 34, 36, 38, 40, 42, 45, 47, 50, 53, 56, 59, 63, 66, 70, 75, 80, 84, 89, 94, 100, 107, 113, 120, 126, 134, 142, 151, 160, 169, 179, 189, 200, 213, 226, 239, 253, 267, 283, 300, 318, 336, 357, 377, 399, 423, 449, 477, 505, 535, 566, 598, 636, 674, 713, 756, 800, 848, 898, 951, 1008, 1068, 1131, 1199, 1270, 1345, 1425, 1510, 1600, 1693, 1792, 1897, 2008, 2125, 2249, 2381, 2521, 2669, 2826, 2992, 3168, 3354, 3552, 3761, 3983, 4218, 4467, 4731, 5010, 5306, 5620, 5952, 6304, 6677, 7072, 7491, 7934, 8404, 8902, 9429, 9988, 10580, 11207, 11872, 12576];
 
 const el = {
+  chipConnection: document.getElementById("chipConnection"),
+  chipPlayback: document.getElementById("chipPlayback"),
+  chipProfile: document.getElementById("chipProfile"),
+  presetButtons: Array.from(document.querySelectorAll(".preset-btn")),
   midiFile: document.getElementById("midiFile"),
+  filePickBtn: document.getElementById("filePickBtn"),
+  filePickName: document.getElementById("filePickName"),
   playBtn: document.getElementById("playBtn"),
   stopBtn: document.getElementById("stopBtn"),
   connectBtn: document.getElementById("connectBtn"),
@@ -45,6 +52,7 @@ let midiDurationSec = 0;
 let startTimeSec = 0;
 let nextEventIndex = 0;
 let activeNoteByChannel = [NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP];
+let activeProfile = "balanced";
 
 let gainCurveTr = new Array(128).fill(0);
 let gainCurveRb = new Array(128).fill(0);
@@ -57,6 +65,38 @@ function logLine(message) {
 
 function clampInt(value, min, max) {
   return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+function setChipState(node, text, modeClass) {
+  if (!node) return;
+  node.textContent = text;
+  node.classList.remove("offline", "online", "idle", "playing", "profile");
+  node.classList.add("chip", modeClass);
+}
+
+function setProfile(profile) {
+  activeProfile = profile;
+  for (const btn of el.presetButtons) {
+    btn.classList.toggle("active", btn.dataset.preset === profile);
+  }
+  setChipState(el.chipProfile, `Profile: ${profile[0].toUpperCase()}${profile.slice(1)}`, "profile");
+}
+
+function applyPreset(profile) {
+  const presets = {
+    balanced: { quantizeMs: 0, minNoteMs: 12, retriggerMs: 8, velocityCurve: 100, dynamicLimiter: true },
+    clean: { quantizeMs: 2, minNoteMs: 16, retriggerMs: 12, velocityCurve: 90, dynamicLimiter: true },
+    punch: { quantizeMs: 0, minNoteMs: 9, retriggerMs: 6, velocityCurve: 130, dynamicLimiter: true },
+    smooth: { quantizeMs: 4, minNoteMs: 18, retriggerMs: 14, velocityCurve: 80, dynamicLimiter: true },
+  };
+  const p = presets[profile] || presets.balanced;
+  el.quantizeMs.value = p.quantizeMs;
+  el.minNoteMs.value = p.minNoteMs;
+  el.retriggerMs.value = p.retriggerMs;
+  el.velocityCurve.value = p.velocityCurve;
+  el.dynamicLimiter.checked = p.dynamicLimiter;
+  setProfile(profile);
+  logLine(`Preset applied: ${profile}`);
 }
 
 function gainModifiers() {
@@ -370,6 +410,7 @@ async function doPlay() {
 
   el.playBtn.disabled = true;
   el.stopBtn.disabled = false;
+  setChipState(el.chipPlayback, "Playback: Playing", "playing");
   logLine("Playback start.");
 }
 
@@ -382,6 +423,7 @@ async function doStop() {
   await stopAllChannels();
   el.playBtn.disabled = !hidDevice || !hidDevice.opened || midiEvents.length === 0;
   el.stopBtn.disabled = true;
+  setChipState(el.chipPlayback, "Playback: Idle", "idle");
 }
 
 async function connectDevice() {
@@ -444,6 +486,7 @@ async function connectDevice() {
   el.deviceInfo.textContent = `Connected: ${hidDevice.productName || "Steam device"}`;
   el.disconnectBtn.disabled = false;
   el.playBtn.disabled = midiEvents.length === 0;
+  setChipState(el.chipConnection, "Device: Online", "online");
   logLine(`Device connected: ${hidDevice.productName || "Unknown"}`);
 }
 
@@ -456,6 +499,8 @@ async function disconnectDevice() {
   el.deviceInfo.textContent = "No device connected.";
   el.disconnectBtn.disabled = true;
   el.playBtn.disabled = true;
+  setChipState(el.chipConnection, "Device: Offline", "offline");
+  setChipState(el.chipPlayback, "Playback: Idle", "idle");
   logLine("Device disconnected.");
 }
 
@@ -474,6 +519,7 @@ async function handleMidiFile(file) {
   midiDurationSec = Math.max(0, midi.duration || 0);
 
   el.midiInfo.textContent = `${file.name} | tracks: ${midi.tracks.length} | events: ${midiEvents.length} | duration: ${midiDurationSec.toFixed(2)}s`;
+  el.filePickName.textContent = file.name;
 
   if (file.name.includes("_dv")) {
     el.directVelocity.checked = true;
@@ -495,6 +541,14 @@ async function handleMidiFile(file) {
 el.connectBtn.addEventListener("click", () => {
   connectDevice().catch((err) => logLine(`Connect error: ${String(err)}`));
 });
+el.filePickBtn.addEventListener("click", () => {
+  el.midiFile.click();
+});
+for (const btn of el.presetButtons) {
+  btn.addEventListener("click", () => {
+    applyPreset(btn.dataset.preset);
+  });
+}
 el.disconnectBtn.addEventListener("click", () => {
   disconnectDevice().catch((err) => logLine(`Disconnect error: ${String(err)}`));
 });
@@ -516,4 +570,8 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
-logLine("Ready. Start a local HTTP/HTTPS server to use WebHID (localhost recommended). v3ry3D product build.");
+setChipState(el.chipConnection, "Device: Offline", "offline");
+setChipState(el.chipPlayback, "Playback: Idle", "idle");
+setProfile("balanced");
+
+logLine(`Ready. Steam Haptics Singer Web ${APP_VERSION}. Start a local HTTP/HTTPS server to use WebHID (localhost recommended). v3ry3D product build.`);

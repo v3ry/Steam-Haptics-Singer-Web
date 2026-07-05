@@ -7,16 +7,30 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="topbar">
+      <div class="topbar-inner">
+        <strong>v3ry3D Control Deck</strong>
+        <div class="top-chips">
+          <span id="chipConnection" class="chip offline">Device: Offline</span>
+          <span id="chipPlayback" class="chip idle">Playback: Idle</span>
+          <span id="chipProfile" class="chip profile">Profile: Custom</span>
+        </div>
+      </div>
+    </div>
     <main class="app">
       <header>
-        <h1>Steam Haptics Singer Web</h1>
+        <h1>Steam Haptics Singer Web <span class="version">v0.3.0</span></h1>
         <p>A v3ry3D product. Pure web version for Chrome (WebHID), focused on Steam Controller 2026.</p>
       </header>
 
       <section class="panel">
         <h2>1) MIDI</h2>
         <label for="midiFile">MIDI File</label>
-        <input id="midiFile" type="file" accept=".mid,.midi" />
+        <div class="file-picker">
+          <button id="filePickBtn" type="button" class="secondary">Browse MIDI</button>
+          <span id="filePickName" class="muted">No file selected.</span>
+          <input id="midiFile" class="hidden-input" type="file" accept=".mid,.midi" />
+        </div>
         <div class="row">
           <button id="playBtn" disabled>Play</button>
           <button id="stopBtn" disabled>Stop</button>
@@ -35,6 +49,13 @@
 
       <section class="panel">
         <h2>3) Options Playback</h2>
+        <div class="preset-row">
+          <span class="preset-label">Sound Profile</span>
+          <button type="button" class="preset-btn active" data-preset="balanced">Balanced</button>
+          <button type="button" class="preset-btn" data-preset="clean">Clean</button>
+          <button type="button" class="preset-btn" data-preset="punch">Punch</button>
+          <button type="button" class="preset-btn" data-preset="smooth">Smooth</button>
+        </div>
         <div class="grid">
           <label>
             Interval (ms)
@@ -101,6 +122,17 @@
       <section class="panel">
         <h2>5) Status</h2>
         <pre id="log"></pre>
+      </section>
+
+      <section class="panel disclaimer">
+        <h2>Disclaimer</h2>
+        <p>
+          Use at your own risk. High gain settings may produce uncomfortable or distorted haptics.
+          Start with conservative settings and increase gradually.
+        </p>
+        <p>
+          Compatibility can vary by firmware, browser version, and selected HID interface.
+        </p>
       </section>
     </main>
 
