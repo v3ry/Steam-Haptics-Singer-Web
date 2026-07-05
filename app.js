@@ -24,6 +24,7 @@ const el = {
   tritonLimit: document.getElementById("tritonLimit"),
   tritonSwap: document.getElementById("tritonSwap"),
   noGainCurve: document.getElementById("noGainCurve"),
+  autoOptimizeMidi: document.getElementById("autoOptimizeMidi"),
   gainL: document.getElementById("gainL"),
   gainR: document.getElementById("gainR"),
   gainN: document.getElementById("gainN"),
@@ -165,6 +166,40 @@ function buildEventList(midi) {
     return a.type === "off" ? -1 : 1;
   });
   return all;
+}
+
+function autoOptimizeEventList(inputEvents) {
+  // Keep only channels supported by the app behavior (0..3).
+  const events = inputEvents.filter((evt) => evt.ch >= 0 && evt.ch <= 3);
+  const out = [];
+  const activeByChannel = [NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP];
+
+  for (const evt of events) {
+    if (evt.type === "on") {
+      const active = activeByChannel[evt.ch];
+      // Enforce monophonic playback per channel by inserting a stop event.
+      if (active !== NOTE_STOP && active !== evt.note) {
+        out.push({ t: evt.t, ch: evt.ch, type: "off", note: active, vel: 0 });
+      }
+      out.push(evt);
+      activeByChannel[evt.ch] = evt.note;
+      continue;
+    }
+
+    if (activeByChannel[evt.ch] === evt.note) {
+      out.push(evt);
+      activeByChannel[evt.ch] = NOTE_STOP;
+    }
+  }
+
+  out.sort((a, b) => {
+    if (a.t !== b.t) return a.t - b.t;
+    if (a.ch !== b.ch) return a.ch - b.ch;
+    if (a.type === b.type) return 0;
+    return a.type === "off" ? -1 : 1;
+  });
+
+  return out;
 }
 
 async function sendTritonNote(channel, note, velocity) {
@@ -363,7 +398,8 @@ async function disconnectDevice() {
 async function handleMidiFile(file) {
   const arr = await file.arrayBuffer();
   const midi = new Midi(arr);
-  midiEvents = buildEventList(midi);
+  const rawEvents = buildEventList(midi);
+  midiEvents = el.autoOptimizeMidi.checked ? autoOptimizeEventList(rawEvents) : rawEvents;
   midiDurationSec = Math.max(0, midi.duration || 0);
 
   el.midiInfo.textContent = `${file.name} | tracks: ${midi.tracks.length} | events: ${midiEvents.length} | duration: ${midiDurationSec.toFixed(2)}s`;
@@ -373,7 +409,11 @@ async function handleMidiFile(file) {
   }
 
   el.playBtn.disabled = !hidDevice || !hidDevice.opened;
-  logLine(`MIDI loaded: ${file.name}`);
+  if (el.autoOptimizeMidi.checked) {
+    logLine(`MIDI loaded: ${file.name} (auto-optimized)`);
+  } else {
+    logLine(`MIDI loaded: ${file.name}`);
+  }
 }
 
 el.connectBtn.addEventListener("click", () => {
