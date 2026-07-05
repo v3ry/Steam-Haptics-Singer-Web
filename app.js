@@ -25,6 +25,11 @@ const el = {
   tritonSwap: document.getElementById("tritonSwap"),
   noGainCurve: document.getElementById("noGainCurve"),
   autoOptimizeMidi: document.getElementById("autoOptimizeMidi"),
+  dynamicLimiter: document.getElementById("dynamicLimiter"),
+  quantizeMs: document.getElementById("quantizeMs"),
+  minNoteMs: document.getElementById("minNoteMs"),
+  retriggerMs: document.getElementById("retriggerMs"),
+  velocityCurve: document.getElementById("velocityCurve"),
   gainL: document.getElementById("gainL"),
   gainR: document.getElementById("gainR"),
   gainN: document.getElementById("gainN"),
@@ -73,6 +78,23 @@ function mapTritonHaptic(channel) {
 
 function signedToByte(v) {
   return clampInt(v, -128, 127) & 0xff;
+}
+
+function quantizeTime(seconds, quantizeMs) {
+  if (quantizeMs <= 0) return seconds;
+  const qSec = quantizeMs / 1000;
+  return Math.round(seconds / qSec) * qSec;
+}
+
+function playbackOptions() {
+  return {
+    autoOptimize: !!el.autoOptimizeMidi.checked,
+    quantizeMs: clampInt(Number(el.quantizeMs.value) || 0, 0, 100),
+    minNoteMs: clampInt(Number(el.minNoteMs.value) || 0, 0, 200),
+    retriggerMs: clampInt(Number(el.retriggerMs.value) || 0, 0, 100),
+    dynamicLimiter: !!el.dynamicLimiter.checked,
+    velocityCurvePct: clampInt(Number(el.velocityCurve.value) || 100, 50, 200),
+  };
 }
 
 function collectOutputReportIds(device) {
@@ -151,12 +173,20 @@ async function loadGainCurves() {
 }
 
 function buildEventList(midi) {
+  const opts = playbackOptions();
   const all = [];
   midi.tracks.forEach((track) => {
     track.notes.forEach((note) => {
       const ch = note.channel ?? 0;
-      all.push({ t: note.time, ch, type: "on", note: note.midi, vel: Math.round((note.velocity ?? 1) * 127) });
-      all.push({ t: note.time + note.duration, ch, type: "off", note: note.midi, vel: 0 });
+      const start = quantizeTime(note.time, opts.quantizeMs);
+      const minDurSec = opts.minNoteMs / 1000;
+      let duration = Math.max(note.duration || 0, minDurSec);
+      if (opts.quantizeMs > 0) {
+        duration = Math.max(duration, opts.quantizeMs / 1000);
+      }
+      const end = start + duration;
+      all.push({ t: start, ch, type: "on", note: note.midi, vel: Math.round((note.velocity ?? 1) * 127) });
+      all.push({ t: end, ch, type: "off", note: note.midi, vel: 0 });
     });
   });
   all.sort((a, b) => {
@@ -169,20 +199,34 @@ function buildEventList(midi) {
 }
 
 function autoOptimizeEventList(inputEvents) {
+  const opts = playbackOptions();
   // Keep only channels supported by the app behavior (0..3).
   const events = inputEvents.filter((evt) => evt.ch >= 0 && evt.ch <= 3);
   const out = [];
   const activeByChannel = [NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP];
+  const lastOnTimeByChannel = [-Infinity, -Infinity, -Infinity, -Infinity];
+  const stats = {
+    droppedChannels: inputEvents.length - events.length,
+    overlapFixes: 0,
+    retriggerDrops: 0,
+  };
 
   for (const evt of events) {
     if (evt.type === "on") {
+      if ((evt.t - lastOnTimeByChannel[evt.ch]) * 1000 < opts.retriggerMs) {
+        stats.retriggerDrops += 1;
+        continue;
+      }
+
       const active = activeByChannel[evt.ch];
       // Enforce monophonic playback per channel by inserting a stop event.
       if (active !== NOTE_STOP && active !== evt.note) {
         out.push({ t: evt.t, ch: evt.ch, type: "off", note: active, vel: 0 });
+        stats.overlapFixes += 1;
       }
       out.push(evt);
       activeByChannel[evt.ch] = evt.note;
+      lastOnTimeByChannel[evt.ch] = evt.t;
       continue;
     }
 
@@ -199,7 +243,23 @@ function autoOptimizeEventList(inputEvents) {
     return a.type === "off" ? -1 : 1;
   });
 
-  return out;
+  return { events: out, stats };
+}
+
+function applyVelocityCurve(velocity, velocityCurvePct) {
+  const n = clampInt(velocity, 0, 127) / 127;
+  const exponent = 100 / velocityCurvePct;
+  return clampInt(Math.round(Math.pow(n, exponent) * 127), 0, 127);
+}
+
+function applyDynamicLimiter(gain, freq, enabled) {
+  if (!enabled) return clampInt(gain, -128, 127);
+
+  let g = clampInt(gain, -100, 72);
+  if (freq < 70) g -= 8;
+  else if (freq < 120) g -= 4;
+  if (freq > 6500) g -= 6;
+  return clampInt(g, -128, 127);
 }
 
 async function sendTritonNote(channel, note, velocity) {
@@ -214,7 +274,10 @@ async function sendTritonNote(channel, note, velocity) {
     const freq = haptic > 2 ? midiFrequencyRb[note] : midiFrequencyTr[note];
     const modifiers = gainModifiers();
     const baseGain = haptic > 2 ? gainCurveRb[note] : gainCurveTr[note];
-    const gain = el.directVelocity.checked ? Math.round((velocity * 255) / 127) - 128 : baseGain;
+    const opts = playbackOptions();
+    const curvedVelocity = applyVelocityCurve(velocity, opts.velocityCurvePct);
+    let gain = el.directVelocity.checked ? Math.round((curvedVelocity * 255) / 127) - 128 : baseGain;
+    gain = applyDynamicLimiter(gain, freq, opts.dynamicLimiter);
     payload[0] = haptic;
     payload[1] = signedToByte(gain + (modifiers[haptic] || 0));
     payload[2] = freq & 0xff;
@@ -297,12 +360,13 @@ async function doPlay() {
 
   const interval = clampInt(Number(el.intervalMs.value) || 10, 1, 100);
   if (playbackTimer) clearInterval(playbackTimer);
+  const schedulerStepMs = Math.max(1, Math.min(8, interval));
   playbackTimer = setInterval(() => {
     schedulerTick().catch((err) => {
-      logLine(`Erreur playback: ${String(err)}`);
+      logLine(`Play error: ${String(err)}`);
       doStop().catch(() => {});
     });
-  }, interval);
+  }, schedulerStepMs);
 
   el.playBtn.disabled = true;
   el.stopBtn.disabled = false;
@@ -399,7 +463,14 @@ async function handleMidiFile(file) {
   const arr = await file.arrayBuffer();
   const midi = new Midi(arr);
   const rawEvents = buildEventList(midi);
-  midiEvents = el.autoOptimizeMidi.checked ? autoOptimizeEventList(rawEvents) : rawEvents;
+  let optimizationStats = null;
+  if (el.autoOptimizeMidi.checked) {
+    const optimized = autoOptimizeEventList(rawEvents);
+    midiEvents = optimized.events;
+    optimizationStats = optimized.stats;
+  } else {
+    midiEvents = rawEvents;
+  }
   midiDurationSec = Math.max(0, midi.duration || 0);
 
   el.midiInfo.textContent = `${file.name} | tracks: ${midi.tracks.length} | events: ${midiEvents.length} | duration: ${midiDurationSec.toFixed(2)}s`;
@@ -411,6 +482,11 @@ async function handleMidiFile(file) {
   el.playBtn.disabled = !hidDevice || !hidDevice.opened;
   if (el.autoOptimizeMidi.checked) {
     logLine(`MIDI loaded: ${file.name} (auto-optimized)`);
+    if (optimizationStats) {
+      logLine(
+        `Optimization report: dropped-channel-events=${optimizationStats.droppedChannels}, overlap-fixes=${optimizationStats.overlapFixes}, retrigger-drops=${optimizationStats.retriggerDrops}`
+      );
+    }
   } else {
     logLine(`MIDI loaded: ${file.name}`);
   }

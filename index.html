@@ -58,6 +58,25 @@
           <label>
             <input id="autoOptimizeMidi" type="checkbox" checked /> Auto-optimize MIDI (channel 0-3 + mono per channel)
           </label>
+          <label>
+            <input id="dynamicLimiter" type="checkbox" checked /> Dynamic limiter (anti-clipping)
+          </label>
+          <label>
+            Quantize start (ms)
+            <input id="quantizeMs" type="number" min="0" max="100" value="0" />
+          </label>
+          <label>
+            Min note length (ms)
+            <input id="minNoteMs" type="number" min="0" max="200" value="12" />
+          </label>
+          <label>
+            Retrigger guard (ms)
+            <input id="retriggerMs" type="number" min="0" max="100" value="8" />
+          </label>
+          <label>
+            Velocity curve (%)
+            <input id="velocityCurve" type="number" min="50" max="200" value="100" />
+          </label>
         </div>
       </section>
 
