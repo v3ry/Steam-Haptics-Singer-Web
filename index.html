@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Steam Haptics Singer Web (Chrome)</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>Steam Haptics Singer Web</h1>
+        <p>Version web pure pour Chrome (WebHID), orientee Steam Controller 2026.</p>
+      </header>
+
+      <section class="panel">
+        <h2>1) MIDI</h2>
+        <label for="midiFile">Fichier MIDI</label>
+        <input id="midiFile" type="file" accept=".mid,.midi" />
+        <div class="row">
+          <button id="playBtn" disabled>Play</button>
+          <button id="stopBtn" disabled>Stop</button>
+        </div>
+        <p id="midiInfo" class="muted">Aucun fichier charge.</p>
+      </section>
+
+      <section class="panel">
+        <h2>2) Device</h2>
+        <div class="row">
+          <button id="connectBtn">Connecter Steam Controller 2026</button>
+          <button id="disconnectBtn" disabled>Deconnecter</button>
+        </div>
+        <p id="deviceInfo" class="muted">Aucun device connecte.</p>
+      </section>
+
+      <section class="panel">
+        <h2>3) Options Playback</h2>
+        <div class="grid">
+          <label>
+            Intervalle (ms)
+            <input id="intervalMs" type="number" min="1" max="100" value="10" />
+          </label>
+          <label>
+            <input id="repeatSong" type="checkbox" /> Repeat
+          </label>
+          <label>
+            <input id="directVelocity" type="checkbox" /> Direct velocity (-v)
+          </label>
+          <label>
+            <input id="tritonLimit" type="checkbox" /> Limiter a 2 canaux (-t)
+          </label>
+          <label>
+            <input id="tritonSwap" type="checkbox" /> Swap trackpad/rumble (-s)
+          </label>
+          <label>
+            <input id="noGainCurve" type="checkbox" /> No gain curve (-u)
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>4) Gain Modifiers</h2>
+        <div class="grid">
+          <label>Left trackpad (-l)
+            <input id="gainL" type="number" min="-64" max="63" value="0" />
+          </label>
+          <label>Right trackpad (-r)
+            <input id="gainR" type="number" min="-64" max="63" value="0" />
+          </label>
+          <label>Left rumble (-n)
+            <input id="gainN" type="number" min="-64" max="63" value="0" />
+          </label>
+          <label>Right rumble (-m)
+            <input id="gainM" type="number" min="-64" max="63" value="0" />
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>5) Etat</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
